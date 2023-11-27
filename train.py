@@ -30,6 +30,8 @@ class Trainer:
         self.Da = DiscriminatorA().to(self.device)
         self.cur_batch_size = args.batch_size
         self.init_models()
+        if args.load is not None:
+            self.load_weights()
 
     def train(self):
         optimizer_G = optim.Adam(self.G.parameters(), lr=self.args.G_lr, betas=(0.5, 0.999))
@@ -157,7 +159,7 @@ class Trainer:
     def init_models(self):
         init_weights((self.G, self.Er, self.Ef, self.Dz, self.Da))
 
-    def save_weights(self):
+    def save(self):
         state_dict_G = self.G.state_dict()
         state_dict_Er = self.Er.state_dict()
         state_dict_Ef = self.Ef.state_dict()
