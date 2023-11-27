@@ -1,10 +1,9 @@
-import pandas as pd
-
+import logging
 from nets import Generator, Encoder, DiscriminatorA, DiscriminatorZ, DiscriminatorX
 from dataset import ids_dataloader
 from utils import show_density, show_flow
 import os
-import datetime
+from datetime import datetime
 import torch
 import torch.nn as nn
 from torch import optim
@@ -15,7 +14,7 @@ class Trainer:
     def __init__(self, args):
         self.args = args
         self.dataloader = ids_dataloader(
-            npz='./dataset/handled_dataset2.npz', name=args.dataset_name, train_num=args.train_num,
+            npz='./dataset/handled_dataset2.npz', name='Train', train_num=args.train_num,
             drop_last=args.drop_last, shuffle=args.shuffle, batch_size=args.batch_size)
         self.device = args.device
         self.G = Generator().to(self.device)
@@ -30,6 +29,14 @@ class Trainer:
             self.load_weights(args.load)
 
     def train(self):
+        if not os.path.exists('./log'):
+            os.makedirs('./log')
+
+        now = datetime.now()
+        logging.basicConfig(filename='./log/{}_{}_training.log'.format('OCNN', now.strftime('%Y%m%d_%H_%M')),
+                            level=logging.INFO,
+                            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
         optimizer_G = optim.Adam(self.G.parameters(), lr=self.args.G_lr, betas=(0.5, 0.999))
         optimizer_Dz = optim.Adam(self.Dz.parameters(), lr=self.args.Dz_lr, betas=(0.5, 0.999))
         optimizer_Ef = optim.Adam(self.Ef.parameters(), lr=self.args.E_lr, betas=(0.5, 0.999))
@@ -144,28 +151,26 @@ class Trainer:
             print(' epoch[{}/{}], Da: {:4f}, G: {:4f}, Dz: {:4f}, Ef: {:4f}, Dx: {:4f}, Er: {:4f}'.format(
                 ep + 1, self.args.epoch, loss_Da, loss_G, loss_Dz, loss_Ef, loss_Dx, loss_Er
             ))
-            loss = [ep,
-                    get_num(loss_Da), get_num(loss_G),
-                    get_num(loss_Dz), get_num(loss_Ef),
-                    get_num(loss_Dx), get_num(loss_Er)]
-            log = pd.DataFrame([loss])
-            log.to_csv('D:/code/model/LOG_{}.csv'.format(self.args.save_name), mode='a', header=False, index=False)
-            print('')
+            logging.info(' epoch[{}/{}], Da: {:4f}, G: {:4f}, Dz: {:4f}, Ef: {:4f}, Dx: {:4f}, Er: {:4f}'.format(
+                ep + 1, self.args.epoch, loss_Da, loss_G, loss_Dz, loss_Ef, loss_Dx, loss_Er
+            ))
         # self.save()
+        logging.info('Finished')
 
     def init_models(self):
         init_weights((self.G, self.Er, self.Ef, self.Dz, self.Da))
 
     def save(self):
-        if not os.path.exists(os.path.dirname('./saved_models')):
-            os.makedirs(os.path.dirname('./saved_models'))
+        if not os.path.exists('./saved_models'):
+            os.makedirs('./saved_models')
+
         state_dict_G = self.G.state_dict()
         state_dict_Er = self.Er.state_dict()
         state_dict_Ef = self.Ef.state_dict()
         state_dict_Dx = self.Dx.state_dict()
         state_dict_Dz = self.Dz.state_dict()
         state_dict_Da = self.Da.state_dict()
-        current_time = datetime.datetime.now().strftime("%Y%m%d%H%M")
+        current_time = datetime.now().strftime("%Y%m%d%H%M")
         model_filename = f'{self.args.save_name}_{current_time}.pth'
 
         torch.save({'Generator': state_dict_G,
@@ -175,6 +180,8 @@ class Trainer:
                     'Discriminator_Z': state_dict_Dz,
                     'Discriminator_Adv': state_dict_Da},
                    './saved_models/{}'.format(model_filename))
+        print('Saved as {}'.format(model_filename))
+        return model_filename
 
     def load_weights(self, name):
         state_dict = torch.load('./saved_models/{}'.format(name))
