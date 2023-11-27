@@ -2,36 +2,32 @@ import pandas as pd
 
 from nets import Generator, Encoder, DiscriminatorA, DiscriminatorZ, DiscriminatorX
 from dataset import ids_dataloader
-from utils.plot import show_density, show_flow
-from utils.seed import set_seed
-
+from utils import show_density, show_flow
+import os
+import datetime
 import torch
 import torch.nn as nn
 from torch import optim
 from barbar import Bar
 
 
-set_seed(1234)
-
-
 class Trainer:
     def __init__(self, args):
         self.args = args
         self.dataloader = ids_dataloader(
-            npz=args.dataset_dir, name=args.dataset_name, train_num=args.train_num,
+            npz='./dataset/handled_dataset2.npz', name=args.dataset_name, train_num=args.train_num,
             drop_last=args.drop_last, shuffle=args.shuffle, batch_size=args.batch_size)
         self.device = args.device
         self.G = Generator().to(self.device)
         self.Er = Encoder().to(self.device)
         self.Ef = Encoder().to(self.device)
         self.Dx = DiscriminatorX().to(self.device)
-        # self.Dy = DiscriminatorY().to(self.device)
         self.Dz = DiscriminatorZ().to(self.device)
         self.Da = DiscriminatorA().to(self.device)
         self.cur_batch_size = args.batch_size
         self.init_models()
         if args.load is not None:
-            self.load_weights()
+            self.load_weights(args.load)
 
     def train(self):
         optimizer_G = optim.Adam(self.G.parameters(), lr=self.args.G_lr, betas=(0.5, 0.999))
@@ -154,43 +150,45 @@ class Trainer:
                     get_num(loss_Dx), get_num(loss_Er)]
             log = pd.DataFrame([loss])
             log.to_csv('D:/code/model/LOG_{}.csv'.format(self.args.save_name), mode='a', header=False, index=False)
-        self.save_weights()
+            print('')
+        # self.save()
 
     def init_models(self):
         init_weights((self.G, self.Er, self.Ef, self.Dz, self.Da))
 
     def save(self):
+        if not os.path.exists(os.path.dirname('./saved_models')):
+            os.makedirs(os.path.dirname('./saved_models'))
         state_dict_G = self.G.state_dict()
         state_dict_Er = self.Er.state_dict()
         state_dict_Ef = self.Ef.state_dict()
         state_dict_Dx = self.Dx.state_dict()
-        # state_dict_Dy = self.Dy.state_dict()
         state_dict_Dz = self.Dz.state_dict()
         state_dict_Da = self.Da.state_dict()
+        current_time = datetime.datetime.now().strftime("%Y%m%d%H%M")
+        model_filename = f'{self.args.save_name}_{current_time}.pth'
 
         torch.save({'Generator': state_dict_G,
                     'Encoder_real': state_dict_Er,
                     'Encoder_fake': state_dict_Ef,
                     'Discriminator_X': state_dict_Dx,
-                    # 'Discriminator_Y': state_dict_Dy,
                     'Discriminator_Z': state_dict_Dz,
                     'Discriminator_Adv': state_dict_Da},
-                   'D:/code/model/MY_{}'.format(self.args.save_name))
+                   './saved_models/{}'.format(model_filename))
 
     def load_weights(self, name):
-        state_dict = torch.load('D:/code/model/MY_{}'.format(name))
+        state_dict = torch.load('./saved_models/{}'.format(name))
 
         self.G.load_state_dict(state_dict['Generator'])
         self.Er.load_state_dict(state_dict['Encoder_real'])
         self.Ef.load_state_dict(state_dict['Encoder_fake'])
         self.Dx.load_state_dict(state_dict['Discriminator_X'])
-        # self.Dy.load_state_dict(state_dict['Discriminator_Y'])
         self.Dz.load_state_dict(state_dict['Discriminator_Z'])
         self.Da.load_state_dict(state_dict['Discriminator_Adv'])
 
     def test(self, num=1000):
-        test_loader_a = ids_dataloader('D:/code/dataset/cicids2018/dataset2.npz', 'Test1a', 1)
-        test_loader_b = ids_dataloader('D:/code/dataset/cicids2018/dataset2.npz', 'Test1b', 1)
+        test_loader_a = ids_dataloader('./dataset/handled_dataset2.npz', 'Test1a', 1)
+        test_loader_b = ids_dataloader('./dataset/handled_dataset2.npz', 'Test1b', 1)
         score_a = []
         score_b = []
         for (i, (data, _, _)) in enumerate(test_loader_a):
