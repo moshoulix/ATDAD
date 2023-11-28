@@ -32,34 +32,35 @@ class Trainer:
             os.makedirs('./log')
 
         now = datetime.now()
-        logging.basicConfig(filename='./log/{}_{}_training.log'.format('OCNN', now.strftime('%Y%m%d_%H_%M')),
+        logging.basicConfig(filename='./log/{}_{}_training.log'.format(self.args.save_name, now.strftime('%Y%m%d_%H_%M')),
                             level=logging.INFO,
                             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-        optimizer_G = optim.Adam(self.G.parameters(), lr=self.args.G_lr, betas=(0.5, 0.999))
         optimizer_Dz = optim.Adam(self.Dz.parameters(), lr=self.args.Dz_lr, betas=(0.5, 0.999))
-        optimizer_Ef = optim.Adam(self.Ef.parameters(), lr=self.args.E_lr, betas=(0.5, 0.999))
         optimizer_Er = optim.Adam(self.Er.parameters(), lr=self.args.E_lr, betas=(0.5, 0.999))
         optimizer_Da = optim.Adam(self.Da.parameters(), lr=self.args.Da_lr, betas=(0.5, 0.999))
         optimizer_Dx = optim.Adam(self.Dx.parameters(), lr=self.args.Dx_lr, betas=(0.5, 0.999))
+        optimizer_Ef_G = optim.Adam(list(self.Ef.parameters()) + list(self.G.parameters()), lr=self.args.E_lr, betas=(0.5, 0.999))
 
         loss_Da = loss_G = loss_Ef = loss_Er = loss_Dz = loss_Dx = None
+        print('Trainning begins.')
+
         for ep in range(self.args.epoch):
             for data, _, _ in self.dataloader:
                 self.cur_batch_size = data.shape[0]
                 data = data.to(self.device)
                 data = data.reshape(self.cur_batch_size, 1, 73)
-
+                self.set_train_mode(True)
                 #####
-                # 1 #   Discriminator ADV:  max  D(x) - D(G(z))
+                # 1 #   Discriminator ADV:  max  Da(x) - Da(G(z))
                 #####
 
                 for i in range(self.args.iter_D):
-                    noise = torch.randn(self.cur_batch_size, 1, 16).to(self.device)
+                    noise = torch.randn(self.cur_batch_size, 1, self.args.latent_dim).to(self.device)
                     fake = self.G.forward(noise)
                     critic_real = self.Da(data).reshape(-1)
                     critic_fake = self.Da(fake).reshape(-1)
-                    gp = gradient_penalty_adv(self.Da, data, fake, self.device)
+                    gp = gradient_penalty_adv(self.Da, data, fake, self.args.data_dim, self.device)
                     loss_Da = (
                             -(torch.mean(critic_real) - torch.mean(critic_fake)) + self.args.lambdas * gp
                     )
@@ -69,30 +70,17 @@ class Trainer:
                     optimizer_Da.step()
 
                 #####
-                # 2 #    Generator: max D(G(z))
-                #####
-
-                for _ in range(1):
-                    noise = torch.randn(self.cur_batch_size, 1, 16).to(self.device)
-                    fake = self.G(noise)
-                    gen_fake = self.Da(fake).reshape(-1)
-                    loss_G = -torch.mean(gen_fake)
-
-                    self.G.zero_grad()
-                    loss_G.backward()
-                    optimizer_G.step()
-
-                #####
-                # 3 #    Discriminator ZZ: max D(z,z) - D(z,z_rec)
+                # 2 #    Discriminator ZZ: max D(z,z) - D(z,z_rec)
                 #####
 
                 for _ in range(self.args.iter_D):
-                    noise = torch.randn(self.cur_batch_size, 1, 16, requires_grad=True).to(self.device)
+                    noise = torch.randn(self.cur_batch_size, 1, self.args.latent_dim, requires_grad=True).to(
+                        self.device)
                     fake = self.G(noise)
                     z_rec = self.Ef(fake)
                     critic_real = self.Dz(noise, noise).reshape(-1)
                     critic_fake = self.Dz(noise, z_rec).reshape(-1)
-                    gp = gradient_penalty_zz(self.Dz, noise, z_rec, self.device)
+                    gp = gradient_penalty_zz(self.Dz, noise, z_rec, self.args.latent_dim, self.device)
                     loss_Dz = (
                             -(torch.mean(critic_real) - torch.mean(critic_fake)) + self.args.lambdas * gp
                     )
@@ -102,22 +90,7 @@ class Trainer:
                     optimizer_Dz.step()
 
                 #####
-                # 4 #    Encoder Fake: max D(z,z_rec)
-                #####
-
-                for _ in range(self.args.iter_E):
-                    noise = torch.randn(self.cur_batch_size, 1, 16).to(self.device)
-                    fake = self.G(noise)
-                    z_rec = self.Ef(fake)
-                    score = self.Dz(noise, z_rec).reshape(-1)
-                    loss_Ef = -torch.mean(score)
-
-                    self.Ef.zero_grad()
-                    loss_Ef.backward()
-                    optimizer_Ef.step()
-
-                #####
-                # 5 #    Discriminator XX: max Dx(x,x) - Dx(x,x_rec)
+                # 3 #    Discriminator XX: max Dx(x,x) - Dx(x,x_rec)
                 #####
 
                 for _ in range(1):
@@ -125,7 +98,7 @@ class Trainer:
                     data.requires_grad_()
                     critic_real = self.Dx(data, data).reshape(-1)
                     critic_fake = self.Dx(data, x_rec).reshape(-1)
-                    gp = gradient_penalty_xx(self.Dx, data, x_rec, self.device)
+                    gp = gradient_penalty_xx(self.Dx, data, x_rec, self.args.data_dim, self.device)
                     loss_Dx = (
                             -(torch.mean(critic_real) - torch.mean(critic_fake)) + self.args.lambdas * gp
                     )
@@ -135,10 +108,28 @@ class Trainer:
                     optimizer_Dx.step()
 
                 #####
-                # 6 #    Encoder Real: max Dx(x,x_rec)
+                # 4 #    Encoder Fake: max D(z,z_rec)  |   Generator: max D(G(z))
                 #####
 
-                for _ in range(1):
+                for _ in range(self.args.iter_E):
+                    noise = torch.randn(self.cur_batch_size, 1, self.args.latent_dim).to(self.device)
+                    fake = self.G(noise)
+                    gen_fake = self.Da(fake).reshape(-1)
+                    z_rec = self.Ef(fake)
+                    score = self.Dz(noise, z_rec).reshape(-1)
+                    loss_Ef = -torch.mean(score)
+                    loss_G = -torch.mean(gen_fake)
+                    loss_Ef_G = loss_Ef + loss_G
+
+                    optimizer_Ef_G.zero_grad()
+                    loss_Ef_G.backward()
+                    optimizer_Ef_G.step()
+
+                #####
+                # 5 #    Encoder Real: max Dx(x,x_rec)
+                #####
+
+                for _ in range(self.args.iter_E):
                     x_rec = self.G.forward(self.Er.forward(data))
                     critic_fake = self.Dx(data, x_rec).reshape(-1)
                     loss_Er = -torch.mean(critic_fake)
@@ -216,6 +207,22 @@ class Trainer:
         # show_density((score_a, score_b), 200)
 
         return score_a, score_b
+
+    def set_train_mode(self, mode):
+        if mode:
+            self.G.train()
+            self.Ef.train()
+            self.Er.train()
+            self.Da.train()
+            self.Dz.train()
+            self.Dx.train()
+        else:
+            self.G.eval()
+            self.Ef.eval()
+            self.Er.eval()
+            self.Da.eval()
+            self.Dz.eval()
+            self.Dx.eval()
 
 
 def init_weights(models):

@@ -1,1 +1,1 @@
-python main.py
+python main.py --epoch 50 --batch_size 32 --train_num 2560
