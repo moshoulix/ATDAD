@@ -4,7 +4,7 @@ ATDAD: One-Class Adversarial Learning for Tabular Data Anomaly Detection
 
 Install aws
 -----
-https://aws.amazon.com/cn/cli/
+https://aws.amazon.com/cli/
 
 Download dataset
 ---
