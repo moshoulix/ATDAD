@@ -144,8 +144,12 @@ class Trainer:
             logging.info(' epoch[{}/{}], Da: {:4f}, G: {:4f}, Dz: {:4f}, Ef: {:4f}, Dx: {:4f}, Er: {:4f}'.format(
                 ep + 1, self.args.epoch, loss_Da, loss_G, loss_Dz, loss_Ef, loss_Dx, loss_Er
             ))
-        # self.save()
-        logging.info('Finished')
+            if (ep + 1) % 10 == 0 and (ep + 1) != self.args.epoch:
+                res = self.test()
+                logging.info('acc: {}, pre: {}, F1: {}, recall: {}'
+                             .format(res['acc'], res['pre'], res['F1'], res['recall']))
+                # self.save()
+        logging.info('Finished.')
 
     def init_models(self):
         init_weights((self.G, self.Er, self.Ef, self.Dz, self.Da))
@@ -183,30 +187,42 @@ class Trainer:
         self.Dz.load_state_dict(state_dict['Discriminator_Z'])
         self.Da.load_state_dict(state_dict['Discriminator_Adv'])
 
-    def test(self, num=1000):
+    def test(self, num_a=1000, num_b=1000, s=0.02):
+        """"""
+        self.set_train_mode(False)
         test_loader_a = ids_dataloader('./dataset/handled_dataset2.npz', 'Test1a', 1)
         test_loader_b = ids_dataloader('./dataset/handled_dataset2.npz', 'Test1b', 1)
         score_a = []
         score_b = []
-        for (i, (data, _, _)) in enumerate(test_loader_a):
-            if i >= num:
-                break
-            data = data.to(self.device)
-            data = data.reshape(1, 1, 73)
-            err = abs(self.G(self.Ef(data)) - data)
-            score_a.append(abs(err.sum().detach().cpu().numpy()))
 
-        for (i, (data, _, _)) in enumerate(test_loader_b):
-            if i >= num:
-                break
-            data = data.to(self.device)
-            data = data.reshape(1, 1, 73)
-            err = abs(self.G(self.Ef(data)) - data)
-            score_b.append(abs(err.sum().detach().cpu().numpy()))
+        with torch.no_grad():
+            for (i, (data, _, _)) in enumerate(test_loader_a):
+                if i >= num_a:
+                    break
+                data = data.to(self.device)
+                data = data.reshape(1, 1, self.args.data_dim)
+                err = abs(self.G(self.Er(data)) - data)
+                score_a.append(abs(err.sum().detach().cpu().numpy()))
+
+            for (i, (data, _, _)) in enumerate(test_loader_b):
+                if i >= num_b:
+                    break
+                data = data.to(self.device)
+                data = data.reshape(1, 1, self.args.data_dim)
+                err = abs(self.G(self.Er(data)) - data)
+                score_b.append(abs(err.sum().detach().cpu().numpy()))
 
         # show_density((score_a, score_b), 200)
-
-        return score_a, score_b
+        score_b.sort()
+        cls = score_b[int(num_b * (1-s)) - 1]
+        temp = sum(1 for i in score_a if i < cls) / num_a
+        recall = sum(1 for i in score_b if i < cls) / num_b
+        pre = recall * num_b / (recall * num_b + temp * num_a)
+        f = 2 * pre * recall / (recall + pre)
+        acc = (1 - temp + recall) / 2
+        print('acc:{:.4f}, F1:{:.4f}, recall:{:.4f}, pre:{:.4f}'.format(acc, f, recall, pre))
+        return {'score_a': score_a, 'score_b': score_b,
+                'acc': acc, 'pre': pre, 'F1': f, 'recall': recall, 'cls': cls, 'FP': temp}
 
     def set_train_mode(self, mode):
         if mode:
@@ -234,9 +250,9 @@ def init_weights(models):
                 nn.init.normal_(layer.weight.data, 0.0, 0.02)
 
 
-def gradient_penalty_adv(dis, real, fake, device='cuda:0'):
+def gradient_penalty_adv(dis, real, fake, data_dim, device='cuda:0'):
     cur_size = real.shape[0]
-    alpha = torch.rand((cur_size, 1, 1)).repeat(1, 1, 73).to(device)
+    alpha = torch.rand((cur_size, 1, 1)).repeat(1, 1, data_dim).to(device)
     interpolated_images = real * alpha + fake * (1 - alpha)
 
     mixed_scores = dis(interpolated_images)
@@ -254,9 +270,9 @@ def gradient_penalty_adv(dis, real, fake, device='cuda:0'):
     return gp
 
 
-def gradient_penalty_zz(dis, z, z_rec, device='cuda:0'):
+def gradient_penalty_zz(dis, z, z_rec, latent_dim, device='cuda:0'):
     cur_size = z.shape[0]
-    alpha = torch.rand((cur_size, 1, 1)).repeat(1, 1, 16).to(device)
+    alpha = torch.rand((cur_size, 1, 1)).repeat(1, 1, latent_dim).to(device)
     interpolated_images = z * alpha + z_rec * (1 - alpha)
 
     mixed_scores = dis(z, interpolated_images)  # (N, 1)
@@ -281,9 +297,9 @@ def gradient_penalty_zz(dis, z, z_rec, device='cuda:0'):
     return gp1 + gp2
 
 
-def gradient_penalty_xx(dis, x, x_rec, device='cuda:0'):
+def gradient_penalty_xx(dis, x, x_rec, data_dim, device='cuda:0'):
     cur_size = x.shape[0]
-    alpha = torch.rand((cur_size, 1, 1)).repeat(1, 1, 73).to(device)
+    alpha = torch.rand((cur_size, 1, 1)).repeat(1, 1, data_dim).to(device)
     interpolated_images = x * alpha + x_rec * (1 - alpha)
 
     mixed_scores = dis(x, interpolated_images)

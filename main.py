@@ -29,6 +29,9 @@ parser.add_argument('--load', default=None, type=str, help='the name of the chec
 parser.add_argument('--save_name', default='ATDAD', type=str, help='the name of model')
 parser.add_argument('--drop_last', default=True, type=bool)
 parser.add_argument('--shuffle', default=True, type=bool)
+parser.add_argument('--latent_dim', default=16, type=int)
+parser.add_argument('--data_dim', default=73, type=int)
+
 
 args = parser.parse_args()
 
@@ -38,7 +41,6 @@ if __name__ == '__main__':
         set_seed(args.seed)
     trainer = Trainer(args)
     trainer.train()
-    # saved_name = trainer.save()
-    trainer.save()
-    trainer.test()
+    saved_name = trainer.save()
+    res = trainer.test()
     print('Completed')
