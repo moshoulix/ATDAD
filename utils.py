@@ -2,7 +2,7 @@ import random
 import numpy as np
 import os
 import torch
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 
 def transdata(data):

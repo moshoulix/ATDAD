@@ -10,7 +10,7 @@ Test3     5000     5000
 """
 from torch.utils.data import Dataset, DataLoader
 import torch
-import pandas as pd
+
 import numpy as np
 
 
@@ -37,6 +37,7 @@ def ids_dataloader(npz, name, batch_size, train_num=None, shuffle=True, drop_las
 
 
 if __name__ == '__main__':
+    import pandas as pd
     np.random.seed(1234)
 
     def timestamp2float(stamp):

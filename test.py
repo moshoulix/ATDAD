@@ -1,9 +1,3 @@
-"""
-
-20220526test1
-20220527test1   95.9%
-"""
-
 from train import Trainer
 from arg import Args
 from utils.seed import set_seed

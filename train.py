@@ -1,13 +1,12 @@
 import logging
 from nets import Generator, Encoder, DiscriminatorA, DiscriminatorZ, DiscriminatorX
 from dataset import ids_dataloader
-from utils import show_density, show_flow
+# from utils import show_density, show_flow
 import os
 from datetime import datetime
 import torch
 import torch.nn as nn
 from torch import optim
-from barbar import Bar
 
 
 class Trainer:
@@ -46,7 +45,7 @@ class Trainer:
 
         loss_Da = loss_G = loss_Ef = loss_Er = loss_Dz = loss_Dx = None
         for ep in range(self.args.epoch):
-            for data, _, _ in Bar(dataloader=self.dataloader):
+            for data, _, _ in self.dataloader:
                 self.cur_batch_size = data.shape[0]
                 data = data.to(self.device)
                 data = data.reshape(self.cur_batch_size, 1, 73)
@@ -214,7 +213,7 @@ class Trainer:
             err = abs(self.G(self.Ef(data)) - data)
             score_b.append(abs(err.sum().detach().cpu().numpy()))
 
-        show_density((score_a, score_b), 200)
+        # show_density((score_a, score_b), 200)
 
         return score_a, score_b
 
